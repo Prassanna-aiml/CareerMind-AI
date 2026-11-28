@@ -1,0 +1,164 @@
+"""
+Embeddings Generation Module
+
+Manages semantic embeddings for text chunks using sentence transformers.
+Provides methods for generating and comparing embeddings.
+Forces CPU mode to avoid GPU crashes.
+"""
+
+from sentence_transformers import SentenceTransformer
+from typing import List, Union
+import numpy as np
+import logging
+import os
+
+# Force CPU mode to avoid GPU/CUDA crashes
+os.environ['CUDA_VISIBLE_DEVICES'] = ''
+
+logger = logging.getLogger(__name__)
+
+
+class EmbeddingsManager:
+    """Manage embeddings generation and storage"""
+    
+    def __init__(self, model_name: str = "all-MiniLM-L6-v2"):
+        """
+        Initialize embeddings manager with CPU mode.
+        
+        Args:
+            model_name: Name of the sentence transformer model
+                Default: all-MiniLM-L6-v2 (fast, lightweight, good quality)
+        """
+        try:
+            # Force CPU mode - critical for stability
+            self.model = SentenceTransformer(model_name, device='cpu')
+            self.model_name = model_name
+            logger.info(f"✅ Loaded embedding model: {model_name} (CPU mode)")
+        except Exception as e:
+            logger.error(f"❌ Error loading embedding model: {e}")
+            raise
+    
+    def generate_embeddings(self, texts: List[str], batch_size: int = 32) -> np.ndarray:
+        """
+        Generate embeddings for a list of texts.
+        
+        Args:
+            texts: List of text strings
+            batch_size: Batch size for encoding
+            
+        Returns:
+            Numpy array of embeddings (shape: [num_texts, embedding_dim])
+        """
+        try:
+            if not texts:
+                raise ValueError("Empty text list provided")
+            
+            embeddings = self.model.encode(
+                texts, 
+                batch_size=batch_size,
+                show_progress_bar=True,
+                convert_to_numpy=True
+            )
+            logger.info(f"Generated embeddings for {len(texts)} texts")
+            return embeddings
+        
+        except Exception as e:
+            logger.error(f"Error generating embeddings: {e}")
+            raise
+    
+    def generate_single_embedding(self, text: str) -> np.ndarray:
+        """
+        Generate embedding for a single text.
+        
+        Args:
+            text: Text string
+            
+        Returns:
+            Embedding vector (shape: [embedding_dim])
+        """
+        try:
+            if not text or not isinstance(text, str):
+                raise ValueError("Invalid text input")
+            
+            embedding = self.model.encode(text, convert_to_numpy=True)
+            return embedding
+        
+        except Exception as e:
+            logger.error(f"Error generating single embedding: {e}")
+            raise
+    
+    def calculate_similarity(self, embedding1: np.ndarray, embedding2: np.ndarray) -> float:
+        """
+        Calculate cosine similarity between two embeddings.
+        
+        Args:
+            embedding1: First embedding vector
+            embedding2: Second embedding vector
+            
+        Returns:
+            Similarity score (0-1)
+        """
+        try:
+            # Cosine similarity using numpy
+            dot_product = np.dot(embedding1, embedding2)
+            norm1 = np.linalg.norm(embedding1)
+            norm2 = np.linalg.norm(embedding2)
+            
+            if norm1 == 0 or norm2 == 0:
+                return 0.0
+            
+            similarity = dot_product / (norm1 * norm2)
+            return float(similarity)
+        
+        except Exception as e:
+            logger.error(f"Error calculating similarity: {e}")
+            raise
+    
+    def find_similar_embeddings(
+        self, 
+        query_embedding: np.ndarray, 
+        corpus_embeddings: np.ndarray,
+        top_k: int = 5
+    ) -> List[tuple]:
+        """
+        Find most similar embeddings in corpus.
+        
+        Args:
+            query_embedding: Query embedding vector
+            corpus_embeddings: Array of corpus embeddings
+            top_k: Number of top similar items to return
+            
+        Returns:
+            List of (index, similarity_score) tuples
+        """
+        try:
+            similarities = []
+            
+            for idx, corpus_emb in enumerate(corpus_embeddings):
+                similarity = self.calculate_similarity(query_embedding, corpus_emb)
+                similarities.append((idx, similarity))
+            
+            # Sort by similarity descending
+            similarities.sort(key=lambda x: x[1], reverse=True)
+            
+            return similarities[:top_k]
+        
+        except Exception as e:
+            logger.error(f"Error finding similar embeddings: {e}")
+            raise
+    
+    def get_embedding_dimension(self) -> int:
+        """
+        Get the dimension of embeddings generated by this model.
+        
+        Returns:
+            Embedding dimension size
+        """
+        sample_text = "sample"
+        embedding = self.generate_single_embedding(sample_text)
+        return embedding.shape[0]
+
+
+def create_embeddings_manager(model_name: str = "all-MiniLM-L6-v2") -> EmbeddingsManager:
+    """Factory function to create embeddings manager."""
+    return EmbeddingsManager(model_name)
